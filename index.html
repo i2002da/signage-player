@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Signage YouTube Player</title>
+<style>
+  :root { --bg: #000; --fg: #ccc; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  #player, iframe { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; }
+  #msg { position: fixed; left: 2vw; bottom: 2vh; color: var(--fg); font: 1.4vw/1.4 sans-serif; display: none; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<div id="msg"></div>
+<script>
+/*
+  사이니지용 유튜브 전체화면 플레이어.
+  사용: index.html?v=영상ID            (한 영상 무한 반복)
+        index.html?list=재생목록ID     (재생목록 반복)
+        &sound=1                       (소리 켜기 시도 — 사이니지 브라우저는 무음이어야 자동재생되는 경우가 많음)
+  모니터 브라우저가 youtube embed 주소를 직접 열면 Referer 가 없어 오류 153 이 나므로,
+  이 페이지가 iframe 으로 감싸 출처를 함께 보낸다.
+*/
+var q = new URLSearchParams(location.search);
+var vid = q.get("v"), list = q.get("list"), sound = q.get("sound") === "1";
+var msg = document.getElementById("msg");
+function show(t) { msg.textContent = t; msg.style.display = "block"; }
+
+if (!vid && !list) {
+  show("주소에 ?v=영상ID 또는 ?list=재생목록ID 를 붙여 주세요.");
+} else {
+  var tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(tag);
+}
+
+var player, lastPlay = Date.now();
+function onYouTubeIframeAPIReady() {
+  var vars = { autoplay: 1, mute: sound ? 0 : 1, controls: 0, rel: 0, playsinline: 1,
+               loop: 1, modestbranding: 1, iv_load_policy: 3, origin: location.origin };
+  if (list) { vars.listType = "playlist"; vars.list = list; } else { vars.playlist = vid; }
+  player = new YT.Player("player", {
+    videoId: vid || undefined,
+    playerVars: vars,
+    events: {
+      onReady: function (e) { if (!sound) e.target.mute(); e.target.playVideo(); },
+      onStateChange: function (e) {
+        if (e.data === YT.PlayerState.PLAYING) { lastPlay = Date.now(); msg.style.display = "none"; }
+        if (e.data === YT.PlayerState.ENDED) { e.target.seekTo(0); e.target.playVideo(); }
+      },
+      onError: function (e) {
+        show("유튜브 오류 " + e.data + " — 1분 뒤 다시 시도합니다.");
+        setTimeout(function () { location.reload(); }, 60000);
+      }
+    }
+  });
+}
+
+// 감시: 3분 넘게 재생 상태가 아니면 새로고침 (네트워크 끊김 등)
+setInterval(function () {
+  if (!player || !player.getPlayerState) return;
+  if (player.getPlayerState() === YT.PlayerState.PLAYING) { lastPlay = Date.now(); return; }
+  if (Date.now() - lastPlay > 180000) location.reload();
+}, 30000);
+</script>
+</body>
+</html>
